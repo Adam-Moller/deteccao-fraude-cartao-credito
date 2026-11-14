@@ -56,6 +56,24 @@ A base de dados contém **284.807 transações reais** de cartões de crédito r
    * **Resultado Combinado:** Cobertura total de **84/98 fraudes (`85,71%` de Recall)** com atrito mínimo ao cliente.
 3. **Nota sobre Escopo de Dados Anonimizados:** Documentação das limitações impostas pela transformação PCA (`V1`–`V28`) e ausência de `Customer_ID` para rastreamento de velocidade/geolocalização por titular.
 
+### 5.1. Racional de Negócio: Por que aceitar mais Falsos Positivos na Camada 1?
+Em sistemas bancários reais, tratar a saída de um modelo de Machine Learning como um interruptor binário ("aprova" ou "bloqueia definitivamente") gera um dilema caro:
+* **Limiar rígido (`0.50`):** Protege o cliente legítimo contra bloqueios indevidos (apenas 3 falsos positivos), mas deixa passar **26,5% das fraudes**, gerando prejuízo financeiro direto (*chargeback*) ao banco.
+* **Limiar sensível (`0.15` a `0.30`) com Desambiguação:** Ao baixar a régua de corte para capturar fraudes camufladas, o modelo inevitavelmente gera mais alertas preventivos em clientes honestos. **Em produção, isso não é um erro — é uma estratégia de triagem.**
+
+Como o custo de enviar uma notificação *Push* ou *SMS* de confirmação (*"Você reconhece esta compra?"*) é próximo de zero, enquanto o custo de uma fraude não detectada é alto, a arquitetura foi desenhada em **duas camadas de decisão**:
+
+1. **Camada 1 — Bloqueio Automático (`Prob >= 0.50`):**
+   * Transações com assinatura clara de fraude são barradas instantaneamente, sem esperar interação do usuário.
+   * **Resultado:** **72/98 fraudes** bloqueadas na hora, com apenas **3 falsos positivos**.
+2. **Camada 2 — Fila de Desambiguação / *Step-up Authentication* (`0.15 <= Prob < 0.50`):**
+   * Transações na "zona cinzenta" não são bloqueadas de imediato (evitando atrito no caixa e reclamações no SAC). Em vez disso, são encaminhadas para validação contextual em tempo real (cruzamento com geolocalização, dispositivo habitual, histórico recente do titular ou desafio via Push/Token no app).
+   * **Resultado:** Intercepta **+12 fraudes** que passariam despercebidas, acionando validação extra para apenas **13 clientes legítimos** em um universo de **56.864 compras normais** (taxa de acionamento de `0,02%`).
+3. **Impacto Combinado:** A cobertura total salta para **84/98 fraudes (`85,71%` de Recall)**, maximizando a proteção financeira sem sacrificar a experiência do correntista.
+
+### 5.2. Auditoria de Falsos Negativos (*Error Analysis*) e Escopo PCA
+* **Diagnóstico de Erros:** Isolamento das fraudes que escaparam ao corte padrão (`0.50`), identificando padrões de transações de teste (`$0.00` e `$1.00`) e compras atípicas na madrugada.
+* **Limitação de Dados Anonimizados:** Documentação explícita de que, devido à transformação PCA (`V1`–`V28`) e à ausência de `Customer_ID` por sigilo bancário, regras de velocidade por titular ou geolocalização impossível foram modeladas conceitualmente na camada de desambiguação.
 ---
 
 ## 🛠️ Tecnologias Utilizadas
